@@ -1,0 +1,61 @@
+{
+  "username": "eren",
+  "sites": [
+    { "site_id": "69491", "date": "2025-01-01", "tech": "LTE" },
+    { "site_id": "69480", "date": "2025-01-01", "tech": "LTE" },
+    { "site_id": "69589", "date": "2025-01-01", "tech": "LTE" },
+    { "site_id": "35065", "date": "2025-01-01", "tech": "LTE" },
+    { "site_id": "69503", "date": "2025-01-01", "tech": "LTE" }
+  ]
+}
+{
+  "username": "eren",
+  "sites": [
+    { "site_id": "69480", "date": "2025-01-01", "tech": "LTE" },
+    { "site_id": "69503", "date": "2025-01-01", "tech": "LTE" }
+  ]
+}
+
+[
+  {
+    "group_id": 29,
+    "created_at": "2025-06-24T00:06:33.743139",
+    "status": "running",
+    "type": "SSV",
+    "items": [
+      { "site_id": "69480", "date": "2025-01-01", "tech": "LTE", "status"="queued" },
+      { "site_id": "69503", "date": "2025-01-01", "tech": "LTE" , "status"="running"}
+      { "site_id": "69589", "date": "2025-01-01", "tech": "LTE", "status"="error" },
+      { "site_id": "35065", "date": "2025-01-01", "tech": "LTE", "status"="ok" },
+    ]
+  },
+  ...
+]
+    QUEUED   = auto()
+    RUNNING  = auto()
+    OK       = auto()       # at least one success → group OK
+    ERROR    = auto()       # item failed
+import os, pyproj.datadir
+os.environ["PROJ_LIB"] = pyproj.datadir.get_data_dir()
+os.environ["PROJ_NETWORK"] = "ON"
+
+celery -A ssv_task_scheduler.celery worker -l info -P threads -c 8<br />
+celery -A ssv_task_scheduler beat -l INFO<br />
+
+celery -A worker_entry worker --loglevel=info --concurrency=4
+celery -A worker_entry worker -l info -P threads -c 8
+
+celery -A worker_entry worker -B --loglevel=info
+celery -A worker_entry beat -l INFO
+
+taskkill /f /im celery.exe
+
+┌───────────┐      1 ────► N      ┌─────────────────────┐
+│ task_groups│───────────────┤  task_items (base) │
+└───────────┘                └────────┬──────────────┘
+                                       │ polymorphic_on = type
+              ┌────────────────────────┼─────────────────────────┐
+              │                        │                         │
+  ┌────────────────────┐   ┌───────────────────────┐  ┌───────────────────────┐
+  │ ssv_task_items     │   │ kpi_export_items      │  │ coverage_scan_items   │
+  └────────────────────┘   └───────────────────────┘  └───────────────────────┘

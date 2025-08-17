@@ -1,0 +1,14 @@
+import os, pyproj.datadir
+os.environ["PROJ_LIB"] = pyproj.datadir.get_data_dir()
+os.environ["PROJ_NETWORK"] = "ON"
+
+celery -A ssv_task_scheduler.celery worker -l info -P threads -c 8<br />
+celery -A ssv_task_scheduler beat -l INFO<br />
+
+celery -A worker_entry worker --loglevel=info --concurrency=4
+celery -A worker_entry worker -l info -P threads -c 8
+
+celery -A worker_entry worker -B --loglevel=info
+celery -A worker_entry beat -l INFO
+
+taskkill /f /im celery.exe

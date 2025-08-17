@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+────────────────────────────────
+/*   Uygulamanın genel arka planı   */
+/* ──────────────────────────────── */
+html,
+body,
+#root {
+  @apply bg-zinc-900 text-gray-100 min-h-screen;
+  /* isterseniz saf siyah: bg-black  */
+  /* veya farklı bir düz renk/gradient */
+}
