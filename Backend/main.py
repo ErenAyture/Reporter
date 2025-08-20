@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Response #,Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 # from sqlalchemy import select
 # from sqlalchemy.ext.asyncio import AsyncSession
 # from database.db import get_db
@@ -15,6 +16,7 @@ from router.general_tasks import router as tasks_router
 from router.task_download import router as download_router
 from router.ws import ws_router
 from router.ws_notify import router as ws_notify
+from router.auth import decode_dashboard_jwt
 from infrustructure.ws_bus import bus
 from contextlib import asynccontextmanager
 
@@ -67,6 +69,19 @@ app.add_exception_handler(RateLimitExceeded,_rate_limit_exceeded_handler)
 def read_root():
 
     return Response("Server is Running")
+
+class VerifyIn(BaseModel):
+    token: str
+
+class VerifyOut(BaseModel):
+    ok: bool
+    username: str | None = None
+    exp: int | None = None  # epoch seconds if present
+
+@app.post("/auth/verify", response_model=VerifyOut)
+def verify(body: VerifyIn):
+    username, exp = decode_dashboard_jwt(body.token)
+    return VerifyOut(ok=True, username=username, exp=exp)
 
 # @app.post("/reports/{report_id}")
 # async def queue_report(report_id: int):
