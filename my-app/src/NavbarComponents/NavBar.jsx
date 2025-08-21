@@ -2,7 +2,7 @@
    src/NavbarComponents/NavBar.jsx
    ────────────────────────────────────────── */
 import { User2 } from "lucide-react";
-
+import { useEffect, useState } from "react";
 /**
  * Simple gradient navbar that greets the user.
  *
@@ -10,6 +10,19 @@ import { User2 } from "lucide-react";
  *  - username   string   name to greet (required)
  */
 export default function NavBar({ username = "Guest" }) {
+  const [leftMs, setLeftMs] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const m = document.cookie.match(/(?:^|; )rpt_front_exp=([^;]*)/);
+      const exp = m ? parseInt(decodeURIComponent(m[1])) : 0;
+      setLeftMs(Math.max(0, exp - Date.now()));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const mm = String(Math.floor(leftMs / 60000)).padStart(2, "0");
+  const ss = String(Math.floor((leftMs % 60000) / 1000)).padStart(2, "0");
   return (
     <nav
       className="sticky top-0 z-40 h-14 w-full select-none border-b
@@ -32,6 +45,11 @@ export default function NavBar({ username = "Guest" }) {
 
         {/* right – greeting */}
         <div className="flex items-center gap-2 text-sm text-gray-200">
+          {leftMs > 0 && (
+            <div className="text-xs opacity-70">
+              Session: {mm}:{ss}
+            </div>
+          )}
           <User2 size={18} className="text-indigo-300" />
           <span className="hidden sm:inline">Welcome,&nbsp;</span>
           <span className="font-medium">{username}</span>

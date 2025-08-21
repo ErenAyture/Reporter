@@ -58,6 +58,7 @@ export function useWebSocket(url, { onMessage }) {
   const wsRef = useRef(null);
 
   useEffect(() => {
+    if (!url) return; // ← guard: don't connect until we have a URL
     const ws = new WebSocket(url);
     wsRef.current = ws;
 

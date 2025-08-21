@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { API_BASE, fetchJSON } from "./api";
 import { useWebSocket } from "./hooks/useWebSocket";
 
@@ -8,9 +9,82 @@ import ActiveTaskList from "./TaskComponents/ActiveTaskList";
 import TaskCardList from "./TaskComponents/TaskCardList";
 import CreateSsvTasksCard from "./TaskCreationComponents/CreateSsvTasksCard";
 
-const USERNAME = "eren"; // ← adapt if you have auth
+// ------- client-expiry helpers (15 min or earlier if JWT.exp) -------
+const EXP_COOKIE = "rpt_front_exp";
+function setExpiryCookie(unixMs) {
+  const d = new Date(unixMs);
+  document.cookie = `${EXP_COOKIE}=${encodeURIComponent(
+    unixMs
+  )}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
+}
+function readExpiryCookie() {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${EXP_COOKIE}=([^;]*)`));
+  return m ? parseInt(decodeURIComponent(m[1])) : null;
+}
+function clearExpiryCookie() {
+  document.cookie = `${EXP_COOKIE}=; Max-Age=0; path=/`;
+}
+
+// --------- Router-based auth: read ?t=, verify, then clean URL ---------
+function useAuthFromRouter() {
+  const [username, setUsername] = useState(null);
+  const [ready, setReady] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const now = Date.now();
+    const params = new URLSearchParams(location.search);
+    const token = params.get("t");
+
+    (async () => {
+      if (token) {
+        try {
+          const res = await fetch(`${API_BASE}/auth/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
+          if (!res.ok) throw new Error("verify failed");
+          const data = await res.json(); // { ok, username, exp }
+
+          sessionStorage.setItem("rpt_user", data.username);
+          setUsername(data.username);
+
+          const jwtMs = data.exp ? data.exp * 1000 : Infinity;
+          const fifteen = now + 15 * 60 * 1000;
+          setExpiryCookie(Math.min(jwtMs, fifteen));
+        } catch {
+          sessionStorage.removeItem("rpt_user");
+          clearExpiryCookie();
+          setUsername(null);
+        } finally {
+          // Clean the URL (remove ?t=...) without adding history
+          navigate("/", { replace: true });
+          setReady(true);
+        }
+      } else {
+        // refresh path: enforce client-side expiry
+        const expTs = readExpiryCookie();
+        if (expTs && expTs > now) {
+          const saved = sessionStorage.getItem("rpt_user");
+          if (saved) setUsername(saved);
+        } else {
+          sessionStorage.removeItem("rpt_user");
+          clearExpiryCookie();
+          setUsername(null);
+        }
+        setReady(true);
+      }
+    })();
+  }, [location.search, navigate]);
+
+  return { username, ready };
+}
 
 export default function App() {
+  const { username, ready } = useAuthFromRouter();
+
   /* ───────────────────────────── state ───────────────────────────── */
   const [groups, setGroups] = useState([]); // all groups (cards)
   const [activeGroups, setActiveGroups] = useState([]); // QUEUED+RUNNING
@@ -18,18 +92,17 @@ export default function App() {
   /* ────────────── helpers that mutate state immutably ───────────── */
   const mergeGroup = useCallback((partial) => {
     setGroups((prev) => {
-      /* try to find existing */
       const idx = prev.findIndex((g) => g.id === partial.id);
-      if (idx === -1) return [partial, ...prev]; // new card
+      if (idx === -1) return [partial, ...prev];
       const next = [...prev];
       next[idx] = { ...next[idx], ...partial };
       return next;
     });
   }, []);
 
-  const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async (u) => {
     const [all, act] = await Promise.all([
-      fetchJSON(`/tasks/?username=${USERNAME}`),
+      fetchJSON(`/tasks/?username=${encodeURIComponent(u)}`),
       fetchJSON(`/tasks/active`),
     ]);
     setGroups(all);
@@ -38,11 +111,22 @@ export default function App() {
 
   /* ───────────────────────── initial load ───────────────────────── */
   useEffect(() => {
-    refreshAll().catch(console.error);
-  }, [refreshAll]);
+    if (!username) return;
+    refreshAll(username).catch(console.error);
+  }, [refreshAll, username]);
 
-  /* ───────────────────────── web-socket ──────────────────────────── */
-  useWebSocket(`${API_BASE.replace(/^http/, "ws")}/ws/user/${USERNAME}`, {
+  /* ───────────────────────── web-socket (USER) ───────────────────── */
+  const userWsUrl = useMemo(
+    () =>
+      username
+        ? `${API_BASE.replace(/^http/, "ws")}/ws/user/${encodeURIComponent(
+            username
+          )}`
+        : null,
+    [username]
+  );
+
+  useWebSocket(userWsUrl, {
     onMessage: (msg) => {
       const { type, ...data } = msg;
 
@@ -91,18 +175,6 @@ export default function App() {
             }))
           );
           break;
-        // case "task_item_started":
-        //   setActiveGroups((groups) =>
-        //     groups.map((group) => ({
-        //       ...group,
-        //       items: group.items.map((item) =>
-        //         item.id === data.item_id
-        //           ? { ...item, status: data.status }
-        //           : item
-        //       ),
-        //     }))
-        //   );
-        //   break;
 
         case "task_item_finished":
           setGroups((prev) =>
@@ -116,12 +188,12 @@ export default function App() {
           break;
 
         default:
-          // console.log("Unhandled WS message:", msg);
           break;
       }
     },
   });
-  /* ───────────────────────── web-socket task list ──────────────────────────── */
+
+  /* ───────────────────────── web-socket (BROADCAST) ───────────────── */
   useWebSocket(`${API_BASE.replace(/^http/, "ws")}/ws/broadcast`, {
     onMessage: (msg) => {
       const { type, ...data } = msg;
@@ -151,18 +223,25 @@ export default function App() {
           break;
 
         default:
-          // console.log("Unhandled WS broadcast message:", msg);
           break;
       }
     },
   });
 
   /* ─────────────────────────── render ───────────────────────────── */
+  if (!ready) return null;
+  if (!username)
+    return (
+      <div className="p-6 text-gray-200">
+        Session expired or not authenticated.
+      </div>
+    );
+
   return (
     <>
-      <NavBar username={USERNAME} />
+      <NavBar username={username} />
       <Body>
-        <CreateSsvTasksCard username={USERNAME} />
+        <CreateSsvTasksCard username={username} />
         <ActiveTaskList groups={activeGroups} />
         <TaskCardList groups={groups} />
       </Body>
