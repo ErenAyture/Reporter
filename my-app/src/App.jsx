@@ -34,8 +34,18 @@ function useAuthFromRouter() {
 
   useEffect(() => {
     const now = Date.now();
+    // 1) query param ?t=...
     const params = new URLSearchParams(location.search);
-    const token = params.get("t");
+    let token = params.get("t");
+
+    // 2) path forms: /t=<token> or /token/<token>
+    if (!token) {
+      const path = decodeURIComponent(location.pathname);
+      const m =
+        path.match(/^\/t=(.+)$/) || // /t=<token>
+        path.match(/^\/token\/(.+)$/); // /token/<token>
+      if (m) token = m[1];
+    }
 
     (async () => {
       if (token) {
@@ -77,7 +87,7 @@ function useAuthFromRouter() {
         setReady(true);
       }
     })();
-  }, [location.search, navigate]);
+  }, [location.search, location.pathname, navigate]);
 
   return { username, ready };
 }

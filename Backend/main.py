@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response #,Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from config import settings
 # from sqlalchemy import select
 # from sqlalchemy.ext.asyncio import AsyncSession
 # from database.db import get_db
@@ -30,27 +31,20 @@ async def lifespan(app: FastAPI):
     yield
     # optional cleanup here
     # await bus.stop() if defined
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Reporter",
+    root_path= settings.ROOT_PATH
+    ,lifespan=lifespan)
 
-origins = [
-    "http://localhost:5173",     # vite dev server
-    "http://127.0.0.1:5173",
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # or ["*"] while developing
+    allow_origins=settings.ALLOW_ORIGINS,       # or ["*"] while developing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await bus.startup()
-    yield
-    # optional cleanup here
-    # await bus.stop() if defined
 #Routers
 app.include_router(ssv_router)
 app.include_router(report_router)
@@ -113,7 +107,6 @@ def verify(body: VerifyIn):
 # ⬇️  Only executed when you call `python main.py`
 if __name__ == "__main__":
     import uvicorn
-    from config import settings
     # Option A – pass the import string (lets --reload work)
     # uvicorn.run(
     #     "main:app",          # "module_name:variable_name"

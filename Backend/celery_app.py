@@ -2,9 +2,10 @@
 from celery import Celery
 from celery.schedules import crontab
 import os
+from config import settings
 # Allow env-vars to override the defaults
-BROKER_URL  = os.getenv("CELERY_BROKER_URL",  "redis://localhost:6379/0")
-RESULT_BACK = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+BROKER_URL  = settings.CELERY_BROKER_URL
+RESULT_BACK = settings.CELERY_BROKER_URL
 
 celery_app = Celery(
     "backend",
